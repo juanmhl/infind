@@ -1,13 +1,22 @@
 #include <ArduinoJson.h>
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
+#include <ESP8266httpUpdate.h>
 #include "DHTesp.h"
 
-// Update these with values suitable for your network.
-
+// Parametros WiFi
 const char* ssid = "infind";
 const char* password = "1518wifi";
 const char* mqtt_server = "192.168.1.189";
+
+// Parametros OTA             >>>> SUSTITUIR IP <<<<<
+#define HTTP_OTA_ADDRESS      F("192.168.1.189")       // Address of OTA update server
+#define HTTP_OTA_PATH         F("/esp8266-ota/update") // Path to update firmware
+#define HTTP_OTA_PORT         1880                     // Port of update server
+                                                       // Name of firmware
+#define HTTP_OTA_VERSION      String(__FILE__).substring(String(__FILE__).lastIndexOf('\\')+1) + ".nodemcu" 
+
+int LED_OTA = 16;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -23,6 +32,77 @@ ADC_MODE(ADC_VCC);  //  habilita lectura del voltaje de alimentacion
 
 DHTesp dht; // objeto sensor
 
+//----------------------------------------------
+//------------ FUNCIONES OTA -------------------
+//----------------------------------------------
+
+// funciones para progreso de OTA (cabeceras)
+void progreso_OTA(int,int);
+void final_OTA();
+void inicio_OTA();
+void error_OTA(int);
+
+//-----------------------------------------------------
+void intenta_OTA()
+{ 
+  Serial.println( "--------------------------" );  
+  Serial.println( "Comprobando actualización:" );
+  Serial.print(HTTP_OTA_ADDRESS);Serial.print(":");Serial.print(HTTP_OTA_PORT);Serial.println(HTTP_OTA_PATH);
+  Serial.println( "--------------------------" );  
+  ESPhttpUpdate.setLedPin(LED_OTA, LOW);
+  ESPhttpUpdate.onStart(inicio_OTA);
+  ESPhttpUpdate.onError(error_OTA);
+  ESPhttpUpdate.onProgress(progreso_OTA);
+  ESPhttpUpdate.onEnd(final_OTA);
+  WiFiClient wClient; // Puede que haya que usar espClient en vez de esto en el swtich (?)
+  switch(ESPhttpUpdate.update(wClient, HTTP_OTA_ADDRESS, HTTP_OTA_PORT, HTTP_OTA_PATH, HTTP_OTA_VERSION)) {
+    case HTTP_UPDATE_FAILED:
+      Serial.printf(" HTTP update failed: Error (%d): %s\n", ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
+      break;
+    case HTTP_UPDATE_NO_UPDATES:
+      Serial.println(F(" El dispositivo ya está actualizado"));
+      break;
+    case HTTP_UPDATE_OK:
+      Serial.println(F(" OK"));
+      break;
+    }
+}
+
+//-----------------------------------------------------
+void final_OTA()
+{
+  Serial.println("Fin OTA. Reiniciando...");
+}
+
+void inicio_OTA()
+{
+  Serial.println("Nuevo Firmware encontrado. Actualizando...");
+}
+
+void error_OTA(int e)
+{
+  char cadena[64];
+  snprintf(cadena,64,"ERROR: %d",e);
+  Serial.println(cadena);
+}
+
+void progreso_OTA(int x, int todo)
+{
+  char cadena[256];
+  int progress=(int)((x*100)/todo);
+  if(progress%10==0)
+  {
+    snprintf(cadena,256,"Progreso: %d%% - %dK de %dK",progress,x/1024,todo/1024);
+    Serial.println(cadena);
+  }
+}
+
+
+//----------------------------------------------
+//------------ RESTO DE FUNCIONES --------------
+//----------------------------------------------
+
+//-------------- Conexion WiFi -----------------
 
 void setup_wifi() {
 
@@ -47,6 +127,8 @@ void setup_wifi() {
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
 }
+
+// ------------------- MQTT Callback ---------------------
 
 void callback(char* topic, byte* payload, unsigned int length) {
   Serial.print("Message arrived [");
@@ -80,6 +162,8 @@ void callback(char* topic, byte* payload, unsigned int length) {
   }
 }
 
+//------------------ Conexion MQTT ---------------------
+
 void reconnect() {
   // Loop until we're reconnected
   while (!client.connected()) {
@@ -103,6 +187,8 @@ void reconnect() {
     }
   }
 }
+
+//----------- Publicacion de datos del NodeMCU -----------
 
 // funcion que empaqueta los datos solicitados en formato json, serializa y publica
 void pubDatos(const unsigned long &uptime, const unsigned int &LED) {
@@ -142,11 +228,16 @@ void pubDatos(const unsigned long &uptime, const unsigned int &LED) {
     client.publish("infind/GRUPO7/datos",out_datos.c_str());
 }
 
+//----------------------------------------------
+//-------------- SETUP Y LOOP ------------------
+//----------------------------------------------
+
 void setup() {
   pinMode(BUILTIN_LED, OUTPUT);     // Initialize the BUILTIN_LED pin as an output
   analogWriteRange(100);  //nuevo rango PWM (0-100)
   Serial.begin(115200);
   setup_wifi();
+  intenta_OTA(); // Busqueda de actualizaciones
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
   dht.setup(5, DHTesp::DHT11); // Connect DHT sensor to GPIO 5
