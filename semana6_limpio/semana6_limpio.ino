@@ -7,10 +7,10 @@
 // Parametros WiFi
 const char* ssid = "infind";
 const char* password = "1518wifi";
-const char* mqtt_server = "192.168.1.189";
+const char* mqtt_server = "172.16.53.103";
 
 // Parametros OTA             >>>> SUSTITUIR IP <<<<<
-#define HTTP_OTA_ADDRESS      F("192.168.1.189")       // Address of OTA update server
+#define HTTP_OTA_ADDRESS      F("172.16.53.103")       // Address of OTA update server
 #define HTTP_OTA_PATH         F("/esp8266-ota/update") // Path to update firmware
 #define HTTP_OTA_PORT         1880                     // Port of update server
                                                        // Name of firmware
@@ -54,8 +54,8 @@ void intenta_OTA()
   ESPhttpUpdate.onError(error_OTA);
   ESPhttpUpdate.onProgress(progreso_OTA);
   ESPhttpUpdate.onEnd(final_OTA);
-  WiFiClient wClient; // Puede que haya que usar espClient en vez de esto en el swtich (?)
-  switch(ESPhttpUpdate.update(wClient, HTTP_OTA_ADDRESS, HTTP_OTA_PORT, HTTP_OTA_PATH, HTTP_OTA_VERSION)) {
+  //WiFiClient wClient; // Puede que haya que usar espClient en vez de esto en el swtich (?)
+  switch(ESPhttpUpdate.update(espClient, HTTP_OTA_ADDRESS, HTTP_OTA_PORT, HTTP_OTA_PATH, HTTP_OTA_VERSION)) {
     case HTTP_UPDATE_FAILED:
       Serial.printf(" HTTP update failed: Error (%d): %s\n", ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
       break;
